@@ -70,26 +70,28 @@
 <body>
     <h1>Ingredient Scaler</h1>
     
-    <p>Paste your ingredients below (one per line: quantity unit ingredient)</p>
+    <p>Paste your ingredients below (one per line, e.g. copied straight from a recipe site)</p>
     <textarea id="ingredientInput" placeholder="Example:
-2 cups flour
-1/2 tsp salt
-1.5 cups sugar
+2 ¼ cups flour
+½ tsp salt
+1 1/2 cups sugar
 250 g butter
-3/4 cup milk"></textarea>
+2 large eggs
+Salt to taste"></textarea>
     
     <button onclick="parseIngredients()">Parse Ingredients</button>
     <button onclick="generateShareLink()" style="margin-left: 10px; background-color: #28a745;">Share Link</button>
     
     <div id="scaleControl" class="scale-control" style="display: none;">
         <label for="percentage">Scale to percentage:</label>
-        <input type="number" id="percentage" value="100" min="1">
+        <input type="number" id="percentage" value="100" min="1" step="any">
         <span>%</span>
         <button onclick="scaleIngredients()">Apply</button>
     </div>
     
     <div id="tableContainer"></div>
 
+    <script src="recipe-scaler.js"></script>
     <script>
         let ingredients = [];
         
@@ -122,43 +124,14 @@
         
         function parseIngredients() {
             const input = document.getElementById('ingredientInput').value;
-            const lines = input.split('\n').filter(line => line.trim());
-            
-            ingredients = [];
-            
-            lines.forEach(line => {
-                // Match: optional spaces, number (int/float/fraction), spaces, letters (unit), spaces, rest (ingredient)
-                const match = line.trim().match(/^\s*([\d.\/]+)\s*([a-zA-Z]+)\s+(.+)$/);
-                
-                if (match) {
-                    const quantityStr = match[1];
-                    let quantity;
-                    
-                    // Check if it's a fraction
-                    if (quantityStr.includes('/')) {
-                        const parts = quantityStr.split('/');
-                        quantity = parseFloat(parts[0]) / parseFloat(parts[1]);
-                    } else {
-                        quantity = parseFloat(quantityStr);
-                    }
-                    
-                    ingredients.push({
-                        originalQuantity: quantity,
-                        originalDisplay: quantityStr,
-                        quantity: quantity,
-                        unit: match[2],
-                        ingredient: match[3]
-                    });
-                }
-            });
-            
-            displayTable();
-            
-            if (ingredients.length > 0) {
-                document.getElementById('scaleControl').style.display = 'block';
-            }
+            ingredients = RecipeScaler.parseIngredients(input);
+            document.getElementById('percentage').value = 100;
+            displayTable(1);
+
+            const hasQuantities = ingredients.some(item => item.quantity);
+            document.getElementById('scaleControl').style.display = hasQuantities ? 'block' : 'none';
         }
-        
+
         function generateShareLink() {
             const input = document.getElementById('ingredientInput').value.trim();
             
@@ -190,47 +163,42 @@
             });
         }
         
-        function displayTable() {
+        function escapeHtml(text) {
+            return text.replace(/[&<>"']/g, ch => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            })[ch]);
+        }
+
+        function displayTable(multiplier) {
             if (ingredients.length === 0) {
-                document.getElementById('tableContainer').innerHTML = '<p>No valid ingredients parsed.</p>';
+                document.getElementById('tableContainer').innerHTML = '<p>No ingredients found.</p>';
                 return;
             }
-            
+
             let html = '<table><thead><tr><th>Quantity</th><th>Unit</th><th>Ingredient</th></tr></thead><tbody>';
-            
+
             ingredients.forEach(item => {
-                // Display as fraction if it was originally a fraction, otherwise show decimal
-                let displayQty = item.quantity;
-                
-                // Round to reasonable precision
-                displayQty = Math.round(displayQty * 1000) / 1000;
-                
+                const row = RecipeScaler.scaleLine(item, multiplier);
                 html += `<tr>
-                    <td>${displayQty}</td>
-                    <td>${item.unit}</td>
-                    <td>${item.ingredient}</td>
+                    <td>${escapeHtml(row.quantity)}</td>
+                    <td>${escapeHtml(row.unitText)}</td>
+                    <td>${escapeHtml(row.ingredient)}</td>
                 </tr>`;
             });
-            
+
             html += '</tbody></table>';
             document.getElementById('tableContainer').innerHTML = html;
         }
-        
+
         function scaleIngredients() {
-            const percentage = parseInt(document.getElementById('percentage').value);
-            
+            const percentage = parseFloat(document.getElementById('percentage').value);
+
             if (isNaN(percentage) || percentage <= 0) {
                 alert('Please enter a valid percentage');
                 return;
             }
-            
-            const multiplier = percentage / 100;
-            
-            ingredients.forEach(item => {
-                item.quantity = item.originalQuantity * multiplier;
-            });
-            
-            displayTable();
+
+            displayTable(percentage / 100);
         }
     </script>
 </body>
