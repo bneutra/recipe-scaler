@@ -13,7 +13,7 @@
         }
         textarea {
             width: 100%;
-            height: 200px;
+            height: 260px;
             margin-bottom: 10px;
             padding: 10px;
             font-family: monospace;
@@ -65,19 +65,27 @@
         .scale-control button {
             margin-left: 10px;
         }
+        .instructions {
+            white-space: pre-wrap;
+            line-height: 1.5;
+        }
     </style>
 </head>
 <body>
     <h1>Ingredient Scaler</h1>
     
-    <p>Paste your ingredients below (one per line, e.g. copied straight from a recipe site)</p>
-    <textarea id="ingredientInput" placeholder="Example:
-2 ¼ cups flour
-½ tsp salt
-1 1/2 cups sugar
-250 g butter
-2 large eggs
-Salt to taste"></textarea>
+    <p>Paste your recipe below, e.g. copied straight from a recipe site: ingredients first (one per line), then a blank line, then any instructions.</p>
+    <textarea id="ingredientInput" placeholder="Example (put ingredient list first, instructions second):
+3 large eggs
+½ cup all-purpose flour
+½ cup milk
+1 tbsp maple syrup, plus more for serving
+¼ tsp salt
+3 tablespoons butter
+
+Preheat oven to 425°F.
+Heat a 10” cast iron pan, melt butter in it.
+Pour in batter, bake 15 min."></textarea>
     
     <button onclick="parseIngredients()">Parse Ingredients</button>
     <button onclick="generateShareLink()" style="margin-left: 10px; background-color: #28a745;">Share Link</button>
@@ -90,6 +98,11 @@ Salt to taste"></textarea>
     </div>
     
     <div id="tableContainer"></div>
+
+    <div id="instructionsContainer" style="display: none;">
+        <h2>Instructions</h2>
+        <div id="instructions" class="instructions"></div>
+    </div>
 
     <script src="recipe-scaler.js"></script>
     <script>
@@ -124,8 +137,14 @@ Salt to taste"></textarea>
         
         function parseIngredients() {
             const input = document.getElementById('ingredientInput').value;
-            ingredients = RecipeScaler.parseIngredients(input);
+            const recipe = RecipeScaler.parseRecipe(input);
+            ingredients = recipe.ingredients;
             document.getElementById('percentage').value = 100;
+
+            // textContent (not innerHTML) so pasted text can't inject markup
+            document.getElementById('instructions').textContent = recipe.instructions.join('\n');
+            document.getElementById('instructionsContainer').style.display =
+                recipe.instructions.length ? 'block' : 'none';
             displayTable(1);
 
             const hasQuantities = ingredients.some(item => item.quantity);

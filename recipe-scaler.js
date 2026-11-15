@@ -95,6 +95,8 @@
             unit: u ? u.unit : null,
             unitText: u ? u.text : '',
             ingredient: rest,
+            // Typed as a decimal (".7 cup")? Keep decimals so we don't lose precision.
+            decimal: /\./.test(q[1] + (q[2] || '')),
         };
     }
 
@@ -102,13 +104,60 @@
         return text.split(/\r?\n/).filter(l => normalize(l)).map(parseLine);
     }
 
+    // Does this line start with something that looks like an ingredient quantity?
+    // "1. Preheat..." / "2) Mix" are numbered steps, not quantities.
+    function hasQuantity(line) {
+        const clean = normalize(line);
+        return !/^\d+[.)]\s/.test(clean) && QTY_RE.test(clean);
+    }
+
+    // Split pasted text into ingredients and instructions. Instructions begin at
+    // the first line after a blank line that has no quantity (unless it is a
+    // "For the glaze:" style sub-heading followed by more ingredients).
+    // Lowercase lines that continue a wrapped ingredient note ("..., plus more
+    // for" / "serving") are joined onto the ingredient above.
+    function parseRecipe(text) {
+        const lines = text.split(/\r?\n/);
+        const ingredients = [];
+        let instructions = [];
+        let afterBlank = false;
+
+        for (let i = 0; i < lines.length; i++) {
+            const clean = normalize(lines[i]);
+            if (!clean) {
+                if (ingredients.length) afterBlank = true;
+                continue;
+            }
+
+            if (afterBlank && !hasQuantity(clean)) {
+                const next = lines.slice(i + 1).find(l => normalize(l));
+                const isSubHeading = clean.endsWith(':') && next !== undefined && hasQuantity(next);
+                if (!isSubHeading) {
+                    instructions = lines.slice(i).map(l => l.trim());
+                    while (instructions.length && !instructions[instructions.length - 1]) instructions.pop();
+                    break;
+                }
+            }
+
+            const parsed = parseLine(lines[i]);
+            const prev = ingredients[ingredients.length - 1];
+            const isContinuation = !afterBlank && !parsed.quantity && prev && prev.quantity
+                && prev.ingredient.includes(',') && /^[a-z]/.test(clean);
+            if (isContinuation) prev.ingredient += ' ' + clean;
+            else ingredients.push(parsed);
+            afterBlank = false;
+        }
+
+        return { ingredients, instructions };
+    }
+
     function trimDecimal(value, places) {
         return String(Number(value.toFixed(places)));
     }
 
-    function formatQuantity(value, unit) {
+    function formatQuantity(value, unit, decimal) {
         if (METRIC_SMALL.has(unit)) return trimDecimal(value, value >= 10 ? 0 : 1);
-        if (METRIC_LARGE.has(unit)) return trimDecimal(value, 2);
+        if (METRIC_LARGE.has(unit) || decimal) return trimDecimal(value, 2);
 
         let whole = Math.floor(value);
         const frac = value - whole;
@@ -127,12 +176,12 @@
 
     function scaleLine(parsed, multiplier) {
         const quantity = parsed.quantity
-            ? parsed.quantity.map(v => formatQuantity(v * multiplier, parsed.unit)).join('–')
+            ? parsed.quantity.map(v => formatQuantity(v * multiplier, parsed.unit, parsed.decimal)).join('–')
             : '';
         return { quantity, unit: parsed.unit, unitText: parsed.unitText, ingredient: parsed.ingredient };
     }
 
-    const api = { normalize, parseLine, parseIngredients, formatQuantity, scaleLine };
+    const api = { normalize, parseLine, parseIngredients, parseRecipe, formatQuantity, scaleLine };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.RecipeScaler = api;
 })(typeof window !== 'undefined' ? window : this);
